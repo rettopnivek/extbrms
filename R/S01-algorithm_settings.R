@@ -96,7 +96,7 @@ algorithm_settings <- function( desired_iter = 10000,
   # Lower boundary of 95% confidence interval for MCMC error
   # around significance cut-off
   algorithm$cut_off <-
-    qbinom( .025, desired_iter, alpha ) / algorithm$total
+    qbinom( .025, algorithm$total, alpha ) / algorithm$total
 
   return( algorithm )
 }
