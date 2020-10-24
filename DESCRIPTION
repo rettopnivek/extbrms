@@ -1,0 +1,20 @@
+Package: extbrms
+Title: Convenience Functions for the 'brms' Package
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Kevin",
+           family = "Potter",
+           role = c("aut", "cre"),
+           email = "kevin.w.potter@gmail.com")
+Description: The 'extbrms' package implements a set of convenience 
+  functions that interface with the package 'brms' to aid in 
+  specifying algorithm settings, saving output, plotting results, 
+  and computing contrasts.
+Depends:
+    R (>= 3.0),
+    brms
+License: MIT + LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
