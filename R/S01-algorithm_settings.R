@@ -24,6 +24,9 @@
 #'   provides better estimate of convergence diagnostics).
 #' @param alpha Cut-off for significance (will be adjusted for
 #'   Monte Carlo).
+#' @param quick_fit Logical; if \code{TRUE} adjusts settings
+#'   for a quicker, less stable fit (good for initial model
+#'   specification).
 #'
 #' @return A list with the algorithm settings.
 #' \enumerate{
@@ -62,7 +65,8 @@ algorithm_settings <- function( desired_iter = 10000,
                                 max_treedepth = 15,
                                 cores = 4,
                                 chains = 4,
-                                alpha = .05 ) {
+                                alpha = .05,
+                                quick_fit = F ) {
 
   # Initialize list with desired settings
   algorithm <- list(
@@ -80,6 +84,14 @@ algorithm_settings <- function( desired_iter = 10000,
     rng_seed <- round( 1e5 * runif( 1 ) )
   }
   algorithm$rng_seed = rng_seed
+
+  if ( quick_fit ) {
+    algorithm$total <- 2000
+    algorithm$warmup <- 250
+    algorithm$iter <- 250 + 2000 / chains
+    algorithm$adapt_delta <- .8
+    algorithm$max_treedepth <- 12
+  }
 
   # Lower boundary of 95% confidence interval for MCMC error
   # around significance cut-off

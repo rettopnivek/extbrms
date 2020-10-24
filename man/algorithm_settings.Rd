@@ -12,7 +12,8 @@ algorithm_settings(
   max_treedepth = 15,
   cores = 4,
   chains = 4,
-  alpha = 0.05
+  alpha = 0.05,
+  quick_fit = F
 )
 }
 \arguments{
@@ -40,6 +41,10 @@ provides better estimate of convergence diagnostics).}
 
 \item{alpha}{Cut-off for significance (will be adjusted for
 Monte Carlo).}
+
+\item{quick_fit}{Logical; if \code{TRUE} adjusts settings
+for a quicker, less stable fit (good for initial model
+specification).}
 }
 \value{
 A list with the algorithm settings.
