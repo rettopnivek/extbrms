@@ -19,7 +19,7 @@
 #'   the weights.
 #' @param grp A vector with the column names for the
 #'   grouping factors.
-#' @param cm An optional data frame with the grouping
+#' @param dm An optional data frame with the grouping
 #'   factors and the weights for the population-level
 #'   effects needed to compute the cell means.
 #' @param digits The number of digits to round to when
@@ -56,10 +56,37 @@
 #'
 #' # Grouping factors
 #' grp <- c( 'supp', 'dose' )
+#' dm <- aggregate( df[,5:7], df[,grp], mean )
+#'
 #' # Create list specifying contrasts to
 #' # compute main effect for delivery type
-#' cl <- list( C1 = list( I = c(  1, 3, 5,2,4,6),
-#'                        W = c( -1,-1,-1,1,1,1) ) )
+#' cl <- list( C1 = list( I = 1:6,
+#'                        W = c(-1,1)[ (dm$supp == 'VC') + 1 ] ) )
+#' res <- omnibus_tests_for_cell_means(
+#'   est, cl, grp = c( 'supp', 'dose' )
+#' )
+#'
+#' # Create list specifying contrasts to
+#' # compute main effect for dose
+#' cl <- list(
+#'   C1 = list( I = 1:4,
+#'              W = c(-1,-1,1,1) ),
+#'   C2 = list( I = c(1:2,5:6),
+#'              W = c(-1,-1,1,1) )
+#' )
+#' res <- omnibus_tests_for_cell_means(
+#'   est, cl, grp = c( 'supp', 'dose' )
+#' )
+#'
+#' # Create list specifying contrasts to
+#' # compute interaction between type
+#' # and dose
+#' cl <- list(
+#'   C1 = list( I = 1:4,
+#'              W = c(1,-1,-1,1) ),
+#'   C2 = list( I = c(1:2,5:6),
+#'              W = c(1,-1,-1,1) )
+#' )
 #' res <- omnibus_tests_for_cell_means(
 #'   est, cl, grp = c( 'supp', 'dose' )
 #' )
@@ -69,7 +96,7 @@
 omnibus_tests_for_cell_means <- function( est,
                                        contrast_list,
                                        grp = NULL,
-                                       cm = NULL,
+                                       dm = NULL,
                                        digits = 3 ) {
 
   # Extract data used to when fitting the model
@@ -93,7 +120,7 @@ omnibus_tests_for_cell_means <- function( est,
 
   # Specify weights for computing
   # cell means
-  if ( is.null( cm ) ) {
+  if ( is.null( dm ) ) {
 
     if ( is.null( grp ) ) {
       stop( paste0(
@@ -102,17 +129,17 @@ omnibus_tests_for_cell_means <- function( est,
       ), call. = F )
     }
 
-    cm <- aggregate(
+    dm <- aggregate(
       df[,sel], df[,grp],
       function(x) mean(x)
     )
   }
 
   # Create matrix for posterior samples for cell means
-  CM <- matrix( NA, S, nrow( cm ) )
+  CM <- matrix( NA, S, nrow( dm ) )
 
   # Specify design matrix
-  DM <- as.matrix( cm[,sel] )
+  DM <- as.matrix( dm[,sel] )
   # Add column if needed for intercept
   if ( any( grepl( 'b_Intercept', iv ) ) ) {
     DM <- cbind( 1, DM )
