@@ -8,12 +8,13 @@ omnibus_tests_for_cell_means(
   est,
   contrast_list,
   grp = NULL,
-  cm = NULL,
+  dm = NULL,
   digits = 3
 )
 }
 \arguments{
-\item{est}{Output from the 'fit_with_brm' function.}
+\item{est}{Output from the \code{\link{fit_with_brm}}
+function.}
 
 \item{contrast_list}{A list of list, each internal
 list specifying a contrast to compute over the
@@ -24,7 +25,7 @@ the weights.}
 \item{grp}{A vector with the column names for the
 grouping factors.}
 
-\item{cm}{An optional data frame with the grouping
+\item{dm}{An optional data frame with the grouping
 factors and the weights for the population-level
 effects needed to compute the cell means.}
 
@@ -50,15 +51,14 @@ whether all contrasts are equal to
 zero is computed.
 }
 \examples{
-
 # Example data set with 2 x 3 design
 data( "ToothGrowth" )
 df <- ToothGrowth
 # Outcome is length of tooth
 df$Y <- df$len
-# Main effects of delivery type and dose
-# and interaction between them
-# Standardize all predictors
+# Define terms for main effects of delivery type
+# and dose and interaction between them
+# and standardize all predictors
 df$PC.ZS.Type <- scale( df$supp == 'OJ' )
 df$PC.ZS.Dose <- scale( df$dose )
 df$PC.ZS.Type_x_dose <- df$PC.ZS.Type * df$PC.ZS.Dose
@@ -75,12 +75,55 @@ est <- fit_with_brm( df, Y ~ PC.ZS.Type + PC.ZS.Dose + PC.ZS.Type_x_dose,
 
 # Grouping factors
 grp <- c( 'supp', 'dose' )
+# Design matrix over grouping factors
+dm <- aggregate( df[,5:7], df[,grp], mean )
+# Data frame for results
+res <- data.frame(
+  Effect = c( 'Type', 'Dose', 'Type x Dose' ),
+  p_value = '',
+  stringsAsFactors = F
+)
+
 # Create list specifying contrasts to
 # compute main effect for delivery type
-cl <- list( C1 = list( I = c(  1, 3, 5,2,4,6),
-                       W = c( -1,-1,-1,1,1,1) ) )
-res <- omnibus_tests_for_cell_means(
+cl <- list( C1 = list( I = 1:6,
+                       W = c(-1,1)[ (dm$supp == 'VC') + 1 ] ) )
+tst <- omnibus_tests_for_cell_means(
   est, cl, grp = c( 'supp', 'dose' )
 )
+res$p_value[1] <- tst$char
+
+# Create list specifying contrasts to
+# compute main effect for dose
+cl <- list(
+  C1 = list( I = 1:4,
+             W = c(-1,-1,1,1) ),
+  C2 = list( I = c(1:2,5:6),
+             W = c(-1,-1,1,1) )
+)
+tst <- omnibus_tests_for_cell_means(
+  est, cl, grp = c( 'supp', 'dose' )
+)
+res$p_value[2] <- tst$char
+
+# Create list specifying contrasts to
+# compute interaction between type
+# and dose
+cl <- list(
+  C1 = list( I = 1:4,
+             W = c(1,-1,-1,1) ),
+  C2 = list( I = c(1:2,5:6),
+             W = c(1,-1,-1,1) )
+)
+tst <- omnibus_tests_for_cell_means(
+  est, cl, grp = c( 'supp', 'dose' )
+)
+res$p_value[3] <- tst$char
+
+# Display results
+print( res )
+
+# Classical approach
+print( anova( lm( Y ~ supp*dose, data = df ) ) )
 
 }

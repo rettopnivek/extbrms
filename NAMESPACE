@@ -3,3 +3,4 @@
 export(algorithm_settings)
 export(fit_with_brm)
 export(omnibus_tests_for_cell_means)
+export(predict_cell_means)
