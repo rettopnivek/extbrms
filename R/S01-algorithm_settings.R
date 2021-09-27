@@ -66,7 +66,7 @@ algorithm_settings <- function( desired_iter = 10000,
                                 cores = 4,
                                 chains = 4,
                                 alpha = .05,
-                                quick_fit = F ) {
+                                quick_fit = FALSE ) {
 
   # Initialize list with desired settings
   algorithm <- list(
