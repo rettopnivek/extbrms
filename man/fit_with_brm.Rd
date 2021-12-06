@@ -13,6 +13,7 @@ fit_with_brm(
   output = NULL,
   track_time = T,
   predict.probs = NULL,
+  debug_function = FALSE,
   ...
 )
 }
@@ -53,6 +54,10 @@ of the function.}
 \item{predict.probs}{A vector of probabilities, input passed
 on to the \code{probs} argument in
 \code{\link[brms]{predict.brmsfit}}.}
+
+\item{debug_function}{Logical; if \code{TRUE} prints brief
+messages to the console to track progress for debugging
+purposes.}
 
 \item{...}{Additional arguments to the \code{\link[brms]{brm}}
 function.}

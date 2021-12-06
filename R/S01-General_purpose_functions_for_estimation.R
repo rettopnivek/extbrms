@@ -3,7 +3,7 @@
 # email: kevin.w.potter@gmail.com
 # Please email me directly if you
 # have any questions or comments
-# Last updated 2021-10-01
+# Last updated 2021-10-13
 
 # Table of contents
 # 1) algorithm_settings
@@ -903,6 +903,9 @@ pull_param <- function( x,
 #' @param predict.probs A vector of probabilities, input passed
 #'   on to the \code{probs} argument in
 #'   \code{\link[brms]{predict.brmsfit}}.
+#' @param debug_function Logical; if \code{TRUE} prints brief
+#'   messages to the console to track progress for debugging
+#'   purposes.
 #' @param ... Additional arguments to the \code{\link[brms]{brm}}
 #'   function.
 #'
@@ -959,13 +962,21 @@ fit_with_brm <- function( data, formula,
                           output = NULL,
                           track_time = T,
                           predict.probs = NULL,
+                          debug_function = FALSE,
                           ... ) {
 
+  if ( debug_function ) message( 'Start estimation' )
+
   if ( is.null( algorithm ) ) {
+    if ( debug_function )
+      message( '- Settings for estimation algorithm' )
+
     algorithm <- extbrms::algorithm_settings()
   }
 
   if ( is.null( predict.probs ) ) {
+    if ( debug_function )
+      message( '- Default prediction intervals' )
     predict.probs <- c(
       .025, # Lower boundary - 95%
       .05, # Lower boundary - 90%
@@ -980,7 +991,8 @@ fit_with_brm <- function( data, formula,
   }
 
   if ( is.null( output ) ) {
-
+    if ( debug_function )
+      message( '- Initialize output' )
     output <- list(
       data = data,
       priors = NULL,
@@ -999,8 +1011,13 @@ fit_with_brm <- function( data, formula,
   }
 
   if ( is.null( output$time ) & track_time ) {
+    if ( debug_function )
+      message( '- Track estimation time' )
     output$time <- Sys.time()
   }
+
+  if ( debug_function )
+    message( '- Fit model to data' )
 
   output$fit <- brm(
     formula,
@@ -1018,16 +1035,31 @@ fit_with_brm <- function( data, formula,
     ...
   )
 
+  if ( debug_function )
+    message( '- Generate model predictions' )
+
   predicted_y <- predict( output$fit, probs = predict.probs )
+
+  if ( debug_function )
+    message( '- Format labels for predictions' )
+
   prd_lbl <- paste0( 'Y.hat.LB.', round( predict.probs, 3 ) )
   prd_lbl[ predict.probs > .5 ] <-
     gsub( '.LB.', '.UB.', prd_lbl[ predict.probs > .5 ], fixed = TRUE )
+  if ( any( predict.probs == .5 ) ) {
+    prd_lbl[ predict.probs == .5 ] <- 'Y.hat.Median'
+  }
 
-  colnames( predicted_y ) <- c(
-    'Y.hat.Mean',
-    'Y.hat.SD',
-    prd_lbl
+  nms <- colnames( predicted_y )
+  entries <- grepl( 'Q', nms, fixed = TRUE )
+  nms[ entries ] <- prd_lbl
+  nms[ !entries ] <- paste0(
+    'Y.hat.',
+    nms[ !entries ]
   )
+
+  if ( debug_function )
+    message( '- Add predictions to data' )
 
   if ( nrow( predicted_y ) == nrow( output$data ) ) {
     output$data <- cbind( output$data, predicted_y )
@@ -1040,6 +1072,9 @@ fit_with_brm <- function( data, formula,
     warning( wrn_msg )
   }
 
+  if ( debug_function )
+    message( '- Extract priors for model' )
+
   output$priors <- prior_summary( output$fit )
 
   if ( track_time ) {
@@ -1048,7 +1083,3 @@ fit_with_brm <- function( data, formula,
 
   return( output )
 }
-
-
-
-
