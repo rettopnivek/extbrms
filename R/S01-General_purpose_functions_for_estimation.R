@@ -1022,6 +1022,7 @@ fit_with_brm <- function( data, formula,
   output$fit <- brm(
     formula,
     data = data,
+    prior = prior,
     iter = algorithm$iter,
     warmup = algorithm$warmup,
     chains = algorithm$chains,
