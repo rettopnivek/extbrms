@@ -2,7 +2,7 @@
 % Please edit documentation in R/S02-beta_binomial_regression_setup.R
 \name{beta_binomial_regression_setup}
 \alias{beta_binomial_regression_setup}
-\title{Title}
+\title{Create Custom Family for Beta-Binomial Distribution}
 \usage{
 beta_binomial_regression_setup(global = FALSE)
 }
@@ -12,15 +12,47 @@ the \code{<<-} assignment to add all
 functions and terms to the global environment.}
 }
 \value{
-Output.
+Either adds to the global environment
+or returns as a list...
+\itemize{
+\item The character string
+\code{beta_binomial_m_prec_stan_functions}
+with the Stan code for the mean and precision
+parameterization of the beta-binomial
+distribution;
+\item The object \code{beta_binomial_m_prec_stanvar}
+to be passed to the \code{stanvars} argument
+for \code{brm};
+\item The R functions
+\code{beta_binomial_m_prec_lpmf},
+\code{beta_binomial_m_prec_rng},
+\code{log_lik_beta_binomial_m_prec}, and
+\code{posterior_predict_beta_binomial_m_prec}
+to enable post-processing functions.
+}
 }
 \description{
-Description.
-}
-\details{
-Forthcoming.
+Function that defines the necessary Stan and R
+functions to implement the beta-binomial family
+via the \code{\link[brms]{custom_family}} option.
 }
 \examples{
-# Examples
+\dontrun{
+# Load in example count data
+data("cbpp", package = "lme4")
+# Create custom family for beta-binomial distribution
+beta_binomial_regression_setup( TRUE )
+# Fit beta-binomial regression
+est <- fit_with_brm(
+  incidence | vint(size) ~ period + (1|herd), data = cbpp,
+  family = beta_binomial_m_prec,
+  stanvars = beta_binomial_m_prec_stanvar
+)
+}
 
+}
+\references{
+Bürkner (2021). Define custom response distributions
+with brms. The R Project for Statistical Computing.
+https://cran.r-project.org/web/packages/brms/vignettes/brms_customfamilies.html
 }

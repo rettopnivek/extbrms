@@ -481,7 +481,7 @@ pull_param <- function( x, expr = NULL,
   prm <- NULL
 
   if ( predefined %in% types$population ) {
-    prm <- x %s% 'b_ & - prior_'
+    prm <- x %s% 'b_ & - prior_ & - [ & - __'
   }
 
   if ( predefined %in% types$cluster ) {
@@ -489,7 +489,7 @@ pull_param <- function( x, expr = NULL,
   }
 
   if ( predefined %in% types$intercept ) {
-    prm <- x %s% 'b_Intercept & - prior_'
+    prm <- x %s% 'b_Intercept & - prior_ & - [ & - __'
   }
 
   if ( predefined %in% types$variance ) {
@@ -497,7 +497,7 @@ pull_param <- function( x, expr = NULL,
   }
 
   if ( predefined %in% types$covariance ) {
-    prm <- x %s% 'cor_ & - prior_'
+    prm <- x %s% 'cor_ & - prior_ & - ['
   }
 
   if ( predefined %in% types$prior ) {
@@ -534,7 +534,7 @@ pull_param <- function( x, expr = NULL,
 }
 
 #### 5) fit_with_brm ####
-#' Fit 'brm' Model to Data
+#' Fit Model to Data Using 'brm'
 #'
 #' A convenience function that makes a call to the
 #' \code{\link[brms]{brm}} function with the
@@ -812,11 +812,20 @@ fit_with_brm <- function( data, formula,
   cls <- cls[ cls != '' ]
 
   lst <- lapply( cls, function(s)
-    all_param %s% paste0( s, ' & - prior' ) )
+    all_param %s% paste0( s, ' & - ( prior_ | [ )' ) )
   names( lst ) <- cls
 
+  # Remove standard deviations for group terms
+  # from 'Intercept' category
+  if ( 'Intercept' %in% names( lst ) ) {
+    lst$Intercept <-
+      lst$Intercept %s% '- sd_'
+  }
+
+  # Save all parameters
   lst$all <- all_param
 
+  # Save priors
   if ( any( grepl( 'prior_', all_param, fixed = TRUE ) ) ) {
     lst$priors <- all_param %s% 'prior_'
   }

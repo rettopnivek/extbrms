@@ -2,7 +2,7 @@
 % Please edit documentation in R/S01-General_purpose_functions_for_estimation.R
 \name{fit_with_brm}
 \alias{fit_with_brm}
-\title{Fit 'brm' Model to Data}
+\title{Fit Model to Data Using 'brm'}
 \usage{
 fit_with_brm(
   data,
