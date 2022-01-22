@@ -2,40 +2,44 @@
 % Please edit documentation in R/S01-General_purpose_functions_for_estimation.R
 \name{pull_param}
 \alias{pull_param}
-\title{Title}
+\title{Get Posterior Samples for Specified Parameters}
 \usage{
-pull_param(
-  x,
-  type = "b_",
-  include = NULL,
-  exclude = NULL,
-  special = NULL,
-  and = c(TRUE, FALSE)
-)
+pull_param(x, expr = NULL, predefined = "b_")
 }
 \arguments{
-\item{type}{...}
+\item{x}{Either a \code{\link[brms]{brmsfit}}
+object,a matrix of posterior samples, or a
+list with an element \code{fit} that is a
+\code{\link[brms]{brmsfit}} object.}
 
-\item{include}{...}
+\item{expr}{An optional character string,
+to be converted into an R expression used
+to match and select parameter names.}
 
-\item{exclude}{...}
-
-\item{special}{...}
-
-\item{and}{...}
-
-\item{prm}{...}
+\item{predefined}{A character string, matched
+against a set of pre-defined labels for
+different types of parameters.}
 }
 \value{
-Output.
+A matrix of posterior samples.
 }
 \description{
-Description.
-}
-\details{
-
+Function to extract the matrix of posterior
+samples from a \code{\link[brms]{brmsfit}}
+object for a specified subset of parameters.
 }
 \examples{
-# Examples
+
+\dontrun{
+data( cars )
+# Setting for algorithm for quicker estimation
+alg <- algorithm_settings( quick_fit = T, rng_seed = 111 )
+# Fit model using 'brm'
+est <- fit_with_brm( cars, dist ~ speed, algorithm = alg, status = T )
+# Extract regression coefficients
+PS <- pull_param( est )
+# Extract residual standard deviation
+PS <- pull_param( est, predefined = 'special' )
+}
 
 }

@@ -3,25 +3,26 @@
 # email: kevin.w.potter@gmail.com
 # Please email me directly if you
 # have any questions or comments
-# Last updated 2021-10-13
+# Last updated 2022-01-22
 
 # Table of contents
 # 1) algorithm_settings
 # 2) Summary functions for Monte Carlo samples
-#   2.1) p_value.monte_carlo
+#   2.1) pv
 #   2.2) ci
-# 3) pull_param
-#   3.1) Custom inclusion/exclusion criteria
-#   3.2) Pre-defined parameter subsets
-#     3.2.1) Return all parameters
-#     3.2.2) Return population-level parameters
-#     3.2.3) Return cluster-level parameters
-#     3.2.4) Return intercept parameter
-#     3.2.5) Return variance parameters
-#     3.2.6) Return covariance parameters
-#     3.2.7) Return samples drawn from priors
-#     3.2.8) Return unique parameter subsets
-# 4) fit_with_brm
+# 3) %s%
+#   3.1) Determine class and extract names
+#   3.2) Define functions
+#   3.3) Convert to R expression
+# 4) pull_param
+#   4.1) Determine class and extract samples
+#   4.2) User-defined subset
+#   4.3) Pre-defined parameter subsets
+# 5) fit_with_brm
+#   5.1) Setup
+#   5.2) Fit model
+#   5.3) Model predictions
+#   5.4) Additional processing
 
 #### 1) algorithm_settings ####
 #' Specify Algorithm Settings for 'brm'
@@ -126,7 +127,7 @@ algorithm_settings <- function( desired_iter = 10000,
 
 #### 2) Summary functions for Monte Carlo samples ####
 
-#### 2.1) p_value.monte_carlo ####
+#### 2.1) pv ####
 #' Compute P-values From Monte Carlo Samples
 #'
 #' A general-purpose function that computes the
@@ -151,20 +152,20 @@ algorithm_settings <- function( desired_iter = 10000,
 #' set.seed( 831 ) # For reproducibility
 #' x <- rnorm( 1000, mean = 1 )
 #' # Two-sided comparison against 0
-#' p_value.monte_carlo( x )
+#' pv( x )
 #' # One-sided comparison against 0
-#' p_value.monte_carlo( x, alternative = 'greater' )
-#' p_value.monte_carlo( x, alternative = 'less' )
+#' pv( x, alternative = 'greater' )
+#' pv( x, alternative = 'less' )
 #' # Non-zero comparison
-#' p_value.monte_carlo( x, comparison = 1 )
-#' p_value.monte_carlo( x, comparison = 1, alternative = 'greater' )
-#' p_value.monte_carlo( x, comparison = 1, alternative = 'less' )
+#' pv( x, comparison = 1 )
+#' pv( x, comparison = 1, alternative = 'greater' )
+#' pv( x, comparison = 1, alternative = 'less' )
 #'
 #' @export
 
-p_value.monte_carlo <- function( x,
-                                 alternative = 'two-sided',
-                                 comparison = 0 ) {
+pv <- function( x,
+                alternative = 'two-sided',
+                comparison = 0 ) {
 
   check <- TRUE
 
@@ -246,328 +247,96 @@ ci <- function( x, width = .95, index = 1:2 ) {
   return( q[index] )
 }
 
-#### 2.3) summary.monte_carlo ####
-#' Title
+#### 3) %s% ####
+#' Operator to Select Parameters
 #'
-#' Description.
+#' An operator that takes an input
+#' (such as a \code{\link[brms]{brmsfit}}
+#' object, matrix, or output from the
+#' \code{\link{fit_with_brm}} function)
+#' and extracts a character vector with
+#' the parameter names that meet a
+#' specified set of criteria.
 #'
-#' @param x ...
-#' @param form ...
-#' @param tidy ...
+#' @param x Either a \code{\link[brms]{brmsfit}}
+#'   object,a matrix of posterior samples, a
+#'   character vector, or a list with an
+#'   element \code{fit} that is a
+#'   \code{\link[brms]{brmsfit}} object.
+#' @param y A character string, to be
+#'   converted into an R expression used
+#'   to match and select parameter names.
 #'
-#' @details
+#' @details The operator converts the character
+#' string on the right-hand side into an
+#' expression making calls to
+#' \code{\link[base]{grepl}} and
+#' \code{&}, \code{|}, and \code{!}.
 #'
-#' @return Output.
+#' @return A character vector.
 #'
 #' @examples
-#' # Examples
+#' # Example vector of parameter names
+#' x <- c(
+#'   'b_Intercept', 'b_speed', 'sigma',
+#'   'prior_Intercept', 'prior_sigma', 'lp__'
+#' )
+#'
+#' # Extract all parameters
+#' x %s% ''
+#'
+#' # Extract parameters with 'b_'
+#' x %s% 'b_'
+#'
+#' # Extract parameters with both 'b_' and 'speed'
+#' x %s% 'b_ & speed'
+#'
+#' # Extract parameters with 'b_' but not 'speed'
+#' x %s% 'b_ & - speed'
+#'
+#' # Extract parameters with 'b_' or 'sigma'
+#' x %s% 'b_ | sigma'
+#'
+#' # Combinations of '&' and '|'
+#' x %s% '( b_ | sigma ) & - prior'
 #'
 #' @export
 
-summary.monte_carlo <- function( x,
-                                 form = NULL,
-                                 tidy = TRUE ) {
+`%s%` <- function( x, y) {
 
-  default_labels <- NULL
-
-  if ( is.null( form ) ) {
-    form <- '[[M]] ([[SD]])||[[CI.025]] to [[CI.975]]||[[P|3]]'
-    default_labels <- c( 'Estimate_M_SD',
-                         'CI_95',
-                         'p_value' )
-  }
-
-  # Shorthand for 'grepl' function
-  qg <- function(string, term) {
-    return( grepl( term, string, fixed = TRUE ) )
-  }
-
-  # Shorthand for 'strsplit' function
-  qs <- function(string, term) {
-    strsplit( string, split = term, fixed = TRUE )[[1]]
-  }
-
-  # Function to determine where input should be
-  # split up into separate columns based on the
-  # symbol '||'
-  find_columns <- function( form ) {
-
-    if ( any( qg( form, '||' ) ) ) {
-      return( qs( form, '||' ) )
-    } else {
-      return( form )
-    }
-
-  }
-
-  # Function to split up input into separate
-  # components for terms bracketed by '[[' and ']]'
-  parse_input <- function( form ) {
-
-    comp <- qs( form, ']]' )
-
-    keep <- qg( comp, '[[' )
-    comp <- comp[ keep ]
-
-    comp <- sapply( comp, function(x) qs( x, '[[' )[2] )
-
-    return( comp )
-  }
-
-  # ...
-  transform_var <- function( x, type ) {
-
-    types <- list(
-      identity = c(
-        "Identity", "identity",
-        "id", "I", "i", "1"
-      ),
-      exponent = c(
-        "Exponent", "exponent",
-        "Exp", "exp",
-        "E", "e", "2"
-      ),
-      logistic = c(
-        "Logistic", "logistic",
-        "L", "l", "3"
-      )
-    )
-
-    if ( type %in% types$identity ) {
-      return( x )
-    }
-
-    if ( type %in% types$exponent ) {
-      return( exp( x ) )
-    }
-
-    if ( type %in% types$logistic ) {
-      return( 1/( 1 + exp( -x ) ) )
-    }
-
-  }
-
-  stat_from_symbol <- function( x, symb ) {
-
-    # ...
-
-    ns <- length( x )
-    qnt <- qbinom( c( .025, .975 ), ns, .05 )/ns
-
-    num <- as.character( diff( qnt ) )
-    num <- qs( num, "0." )[2]
-    num <- qs( num, "" )
-
-    n_zeros <- min( which( num != "0" ) ) - 1
-
-    if ( round( diff( qnt ), n_zeros ) != 0 ) {
-      n_zeros <- n_zeros - 1
-    }
-
-    digits <- n_zeros
-
-    # ...
-    parts <- c( "", digits, "i" )
-
-    # ...
-    if ( qg( symb, '|' ) ) {
-
-      val <- qs( symb, '|' )
-
-      parts[1] <- val[1]
-
-      if ( qg( parts[2], '!' ) ) {
-
-        val[2] <- qs( val[2], '!' )[1]
-
-      }
-
-      parts[2] <- val[2]
-    }
-
-    if ( qg( '!', symb ) ) {
-
-      val <- qs( symb, '!' )
-
-      if ( parts[1] == "" ) {
-        parts[1] <- val[1]
-      }
-
-      parts[3] <- val[2]
-
-    }
-
-    if ( parts[1] == "" ) {
-      parts[1] <- symb
-    }
-
-    # ...
-
-    if ( parts[1] == "M" ) {
-
-      out <- mean( transform_var( x, parts[3] ) )
-
-    }
-
-    if ( parts[1] %in% c( "Md" ) ) {
-
-      out <- median( transform_var( x, parts[3] ) )
-
-    }
-
-    if ( parts[1] == "SD" ) {
-
-      out <- sd( transform_var( x, parts[3] ) )
-
-    }
-
-    if ( parts[1] %in% c( "P" ) ) {
-
-      out <- p_value.monte_carlo( transform_var( x, parts[3] ) )
-
-    }
-
-    if ( qg( parts[1], "CI." ) ) {
-
-      p <- as.numeric( qs( parts[1], "CI" )[2] )
-
-      out <- quantile( transform_var( x, parts[3] ), probs = p )
-
-    }
-
-    out <- format(
-      out,
-      digits = as.numeric( parts[2] ),
-      nsmall = as.numeric( parts[2] )
-    )
-
-    return( out )
-  }
-
-  # Split up into separate columns
-  all_forms <- find_columns( form )
-
-  # Number of rows (one per each parameter)
-  J <- ncol( x )
-
-  # Number of of columns
-  K <- length( all_forms )
-
-  # Initialize matrix for results
-  out <- matrix( '', J, K )
-
-  # Loop over rows
-  for ( j in 1:J ) {
-
-    # Loop over columns
-    for ( k in 1:K ) {
-
-      output <- all_forms[k]
-
-      all_symbs <- parse_input( output )
-
-      for ( i in 1:length( all_symbs ) ) {
-
-        val <- stat_from_symbol( x[,j], all_symbs[i] )
-        output <- gsub( paste0( '[[', all_symbs[i], ']]' ),
-                        val, output, fixed = TRUE )
-
-      }
-
-      out[j,k] <- output
-
-      # Close 'Loop over columns'
-    }
-
-    # Close 'Loop over rows'
-  }
-
-  if ( is.null( default_labels ) ) {
-    default_labels <- paste0( 'C_', 1:K )
-  }
-
-  out <- cbind( colnames( x ),
-                out )
-  colnames( out ) <- c(
-    'Variable',
-    default_labels
-  )
-
-  out <- data.frame( out, stringsAsFactors = F )
-
-  if ( tidy ) {
-
-    out$Variable <- gsub( 'b_', '', out$Variable )
-    out$Variable <- gsub( 'sd_', '', out$Variable )
-    out$Variable <- gsub( 'cor_', '', out$Variable )
-    out$Variable <- gsub( '_', ' ', out$Variable )
-    out$Variable <- gsub( '.', ' ', out$Variable )
-    out$Variable <- gsub( 'IV.', '', out$Variable )
-    out$Variable <- gsub( 'DC.', '', out$Variable )
-    out$Variable <- gsub( 'EC.', '', out$Variable )
-    out$Variable <- gsub( 'ZS.', '', out$Variable )
-    out$Variable <- gsub( 'RW.', '', out$Variable )
-
-  }
-
-  return( out )
-}
-
-#### 3) pull_param ####
-#' Title
-#'
-#' Description.
-#'
-#' @param prm ...
-#' @param type ...
-#' @param include ...
-#' @param exclude ...
-#' @param special ...
-#' @param and ...
-#'
-#' @details
-#'
-#' @return Output.
-#'
-#' @examples
-#' # Examples
-#'
-#' @export
-
-pull_param <- function( x,
-                        type = 'b_',
-                        include = NULL,
-                        exclude = NULL,
-                        special = NULL,
-                        and = c( TRUE, FALSE ) ) {
+  #### 3.1) Determine class and extract names ####
 
   prm <- NULL
-  ps <- NULL
 
   if ( class( x )[1] == 'brmsfit' ) {
     prm <- variables( x )
-    ps <- as.matrix( x )
   }
 
   if ( class( x )[1] == 'matrix' ) {
     prm <- colnames( x )
-    ps <- x
   }
-
 
   if ( class( x )[1] == 'character' ) {
     prm <- x
+  }
+
+  if ( class( x )[1] == 'list' ) {
+    if ( !is.null( x$fit ) ) {
+      prm <- variables( x$fit )
+    }
   }
 
   if ( is.null( prm ) ) {
 
     err_msg <- paste0(
       "First argument must be an object of class ",
-      "'brmsfit', 'matrix', or 'character'"
+      "'brmsfit', 'matrix', 'character', or 'list'"
     )
     stop( err_msg )
 
   }
+
+  #### 3.2) Define functions ####
 
   # Shorthand for 'grepl' function
   qg <- function(x, y) {
@@ -575,89 +344,111 @@ pull_param <- function( x,
     return( entries )
   }
 
-  #### 3.1) Custom inclusion/exclusion criteria ####
-
-  # If inclusion/exclusion criteria were specified
-  if ( !is.null( include ) | !is.null( exclude ) ) {
-
-    # Number of parameter names
-    n = length( prm )
-
-    # Initialize output
-    log_vec <- rep( FALSE, length( prm ) )
-
-    # If inclusion criteria were specified
-    if ( !is.null( include ) ) {
-
-      # Number of criteria
-      ni <- length( include )
-
-      # Initialize logical matrix
-      log_mat <- matrix( FALSE, n, ni )
-
-      # Loop over criteria
-      for ( k in 1:ni ) {
-
-        # Check if criteria met
-        log_mat[,k] = qg( include[k], prm )
-
-        # Output for and/or
-        if ( and[1] ) {
-          log_vec <- rowSums( log_mat ) == ni
-        } else {
-          log_vec <- rowSums( log_mat ) > 0
-        }
-
-        # Close 'Loop over criteria'
-      }
-
-      # Close 'If inclusion criteria were specified'
-    }
-
-    # If exclusion criteria were specified
-    if ( !is.null( exclude ) ) {
-
-      # Number of criteria
-      ne <- length( exclude )
-
-      # Initialize logical matrix
-      log_mat <- matrix( FALSE, n, ne )
-
-      # Loop over criteria
-      for ( k in 1:ne ) {
-
-        # Check if criteria met
-        log_mat[,k] = qg( exclude[k], prm )
-
-        # Output for and/or
-        if ( and[2] ) {
-          log_vec <-
-            log_vec &
-            !( rowSums( log_mat ) == ne )
-        } else {
-          log_vec <-
-            log_vec &
-            !( rowSums( log_mat ) > 0 )
-        }
-
-        # Close 'Loop over criteria'
-      }
-
-      # Close 'If exclusion criteria were specified'
-    }
-
-    # If matrix of posterior samples was provided
-    if ( !is.null( ps ) ) {
-      return( ps[, prm[ log_vec ] ] )
-    }
-
-    # Return subset of names
-    return( prm[ log_vec ] )
-
-    # Close 'If inclusion/exclusion criteria were specified'
+  # Shorthand for 'strsplit' function
+  qs <- function(x, y) {
+    out <- strsplit( x, split = y, fixed = TRUE )[[1]]
+    return( out )
   }
 
-  #### 3.2) Pre-defined parameter subsets ####
+  #### 3.3) Convert to R expression ####
+
+  if ( y == '' ) {
+    return( prm )
+  }
+
+  chr_vec <- qs( y, ' ' )
+  mod <- chr_vec %in% c( '-', '|', '&', '(', ')' )
+  chr_vec[ !mod ] <-
+    paste0( "qg('", chr_vec[ !mod ], "',prm) " )
+
+  chr_vec[ chr_vec == '-' ] <- '!'
+
+  chr_vec[ chr_vec == '|' ] <- '| '
+  chr_vec[ chr_vec == '&' ] <- '& '
+
+  chr_vec <- paste( chr_vec, collapse = '' )
+
+  return( prm[ eval( parse( text = chr_vec ) ) ] )
+}
+
+#### 4) pull_param ####
+#' Get Posterior Samples for Specified Parameters
+#'
+#' Function to extract the matrix of posterior
+#' samples from a \code{\link[brms]{brmsfit}}
+#' object for a specified subset of parameters.
+#'
+#' @param x Either a \code{\link[brms]{brmsfit}}
+#'   object,a matrix of posterior samples, or a
+#'   list with an element \code{fit} that is a
+#'   \code{\link[brms]{brmsfit}} object.
+#' @param expr An optional character string,
+#'   to be converted into an R expression used
+#'   to match and select parameter names.
+#' @param predefined A character string, matched
+#'   against a set of pre-defined labels for
+#'   different types of parameters.
+#'
+#' @return A matrix of posterior samples.
+#'
+#' @examples
+#'
+#' \dontrun{
+#' data( cars )
+#' # Setting for algorithm for quicker estimation
+#' alg <- algorithm_settings( quick_fit = T, rng_seed = 111 )
+#' # Fit model using 'brm'
+#' est <- fit_with_brm( cars, dist ~ speed, algorithm = alg, status = T )
+#' # Extract regression coefficients
+#' PS <- pull_param( est )
+#' # Extract residual standard deviation
+#' PS <- pull_param( est, predefined = 'special' )
+#' }
+#'
+#' @export
+
+pull_param <- function( x, expr = NULL,
+                        predefined = 'b_' ) {
+
+  #### 4.1) Determine class and extract samples ####
+
+  ps <- NULL
+
+  if ( class( x )[1] == 'brmsfit' ) {
+    ps <- as.matrix( x )
+  }
+
+  if ( class( x )[1] == 'matrix' ) {
+    ps <- x
+  }
+
+  if ( class( x )[1] == 'list' ) {
+    if ( !is.null( x$fit ) ) {
+      ps <- as.matrix( x$fit )
+    }
+  }
+
+  if ( is.null( ps ) ) {
+
+    err_msg <- paste0(
+      "First argument must be an object of class ",
+      "'brmsfit', 'matrix', or 'list'"
+    )
+    stop( err_msg )
+
+  }
+
+  #### 4.2) User-defined subset ####
+
+  if ( !is.null( expr ) ) {
+
+    prm <- x %s% expr
+
+    return( ps[,prm] )
+
+  }
+
+  #### 4.3) Pre-defined parameter subsets ####
 
   # Possible inputs to specify subset of
   # parameters to returns
@@ -667,15 +458,15 @@ pull_param <- function( x,
                    'Pop', 'pop', 'p',
                    '2nd', 'Second', 'second',
                    'b_' ),
-    cluster = c( 'Cluster', 'cluster',
-                 'Group', 'group',
+    cluster = c( 'Group', 'group',
+                 'Cluster', 'cluster',
                  'Group-level', 'group-level',
                  '1st', 'First', 'first',
                  'r_' ),
     intercept = c( 'Intercept', 'intercept',
                    'B0', 'b0', 'i' ),
     variance = c( 'Variance', 'variance',
-                  'Var', 'var', 'v', 'sd_', 'v' ),
+                  'Var', 'var', 'v', 'sd_' ),
     covariance = c( 'Covariance', 'covariance',
                     'Correlation', 'correlation',
                     'Cov', 'cov', 'Cor', 'cor',
@@ -687,184 +478,62 @@ pull_param <- function( x,
                'pr' )
   )
 
-  # Initialize output
-  out <- NULL
+  prm <- NULL
 
-  #### 3.2.1) Return all parameters ####
-
-  # Note: Excludes priors and log-probability
-  if ( type %in% types$all ) {
-
-    entries <-
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return all parameters'
+  if ( predefined %in% types$population ) {
+    prm <- x %s% 'b_ & - prior_'
   }
 
-  #### 3.2.2) Return population-level parameters ####
-
-  if ( type %in% types$population ) {
-
-    entries <-
-      qg( 'b_', prm ) &
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-
-      out <- prm[ entries ]
-
-      # Make sure intercept term is always first
-      if ( any( out == 'b_Intercept' ) ) {
-
-        out <- c(
-          out[ out == 'b_Intercept' ],
-          out[ out != 'b_Intercept' ]
-        )
-
-      }
-
-    }
-
-    # Close 'Return population-level parameters'
+  if ( predefined %in% types$cluster ) {
+    prm <- x %s% 'r_ & - prior_'
   }
 
-  #### 3.2.3) Return cluster-level parameters ####
-
-  if ( type %in% types$cluster ) {
-
-    entries <-
-      qg( 'r_', prm ) &
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return cluster-level parameters'
+  if ( predefined %in% types$intercept ) {
+    prm <- x %s% 'b_Intercept & - prior_'
   }
 
-  #### 3.2.4) Return intercept parameter ####
-
-  if ( type %in% types$intercept ) {
-
-    entries <-
-      qg( 'b_Intercept', prm ) &
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return intercept parameter'
+  if ( predefined %in% types$variance ) {
+    prm <- x %s% 'sd_ & - prior_'
   }
 
-  #### 3.2.5) Return variance parameters ####
-
-  if ( type %in% types$variance ) {
-
-    entries <-
-      qg( 'sd_', prm ) &
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return variance parameters'
+  if ( predefined %in% types$covariance ) {
+    prm <- x %s% 'cor_ & - prior_'
   }
 
-  #### 3.2.6) Return covariance parameters ####
-
-  if ( type %in% types$covariance ) {
-
-    entries <-
-      qg( 'cor_', prm ) &
-      !qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return covariance parameters'
+  if ( predefined %in% types$prior ) {
+    prm <- x %s% 'prior_'
   }
 
-  #### 3.2.7) Return samples drawn from priors ####
+  if ( predefined %in% types$special ) {
 
-  if ( type %in% types$prior ) {
+    special <- c(
+      'sigma',
+      'phi',
+      'nu',
+      'shape',
+      'ndt',
+      'alpha',
+      'xi',
+      'beta',
+      'kappa'
+    )
 
-    entries <-
-      qg( 'prior', prm ) &
-      !qg( 'lp__', prm )
+    special <- paste(
+      special, collapse = ' | '
+    )
 
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
+    prm <- x %s% paste0( '( ', special, ' ) & - prior_' )
 
-    # Close 'Return samples drawn from priors'
   }
 
-
-  #### 3.2.8) Return unique parameter subsets ####
-
-  if ( type %in% types$special ) {
-
-    if ( is.null( special ) ) {
-      special <- c(
-        'sigma',
-        'phi',
-        'nu',
-        'shape',
-        'ndt',
-        'alpha',
-        'xi',
-        'beta',
-        'kappa'
-      )
-    }
-
-    log_vec <- rep( FALSE, length( prm ) )
-    for ( k in 1:length( special ) ) {
-
-      entries <-
-        qg( special[k], prm ) &
-        qg( 'prior', prm ) &
-        !qg( 'lp__', prm )
-      log_vec[ entries ] <- TRUE
-
-    }
-    entries <- log_vec
-
-    if ( any( entries ) ) {
-      out <- prm[ entries ]
-    }
-
-    # Close 'Return unique parameter subsets'
+  if ( is.null( prm ) ) {
+    stop( 'Input does not match any pre-defined options' )
   }
 
-  if ( !is.null( out ) ) {
-
-    # If matrix of posterior samples was provided
-    if ( !is.null( ps ) ) {
-      return( ps[, out ] )
-    }
-
-    return( out )
-  }
-
-  stop( 'Type of parameter not found' )
+  return( ps[, prm ] )
 }
 
-#### 4) fit_with_brm ####
+#### 5) fit_with_brm ####
 #' Fit 'brm' Model to Data
 #'
 #' A convenience function that makes a call to the
@@ -900,10 +569,9 @@ pull_param <- function( x,
 #'   added.
 #' @param track_time Logical; if \code{TRUE}, tracks the run time
 #'   of the function.
-#' @param predict.probs A vector of probabilities, input passed
-#'   on to the \code{probs} argument in
-#'   \code{\link[brms]{predict.brmsfit}}.
-#' @param debug_function Logical; if \code{TRUE} prints brief
+#' @param predict_probs A vector of probabilities, input passed
+#'   on to the \code{probs} argument in \code{\link[brms]{predict.brmsfit}}.
+#' @param status Logical; if \code{TRUE} prints brief
 #'   messages to the console to track progress for debugging
 #'   purposes.
 #' @param ... Additional arguments to the \code{\link[brms]{brm}}
@@ -914,45 +582,59 @@ pull_param <- function( x,
 #'
 #' @return A list including the elements...
 #' \itemize{
-#'   \item data: The data frame used as input to the \code{brm} function.
-#'   \item priors: The priors extracted via the \code{prior_summary} function.
-#'   \item fit: The output from the \code{brm} function.
-#'   \item algorithm: The list with the algorithm settings.
+#'   \item data: The data frame used as input to the
+#'     \code{brm} function;
+#'   \item priors: The priors extracted via the
+#'     \code{prior_summary} function;
+#'   \item fit: The output from the \code{brm} function;
+#'   \item predicted: A matrix simulated data based on
+#'     the sets posterior samples (rows) per each observation
+#'     in the data set (columns);
+#'   \item algorithm: The list with the algorithm settings;
+#'   \item parameters: A list with subsets of parameter names;
+#'   \item time: How long it took to fit the model.
 #' }
 #'
 #' @examples
 #' # Example for simple linear regression
+#' \dontrun{
 #' data( cars )
 #' # Setting for algorithm for quicker estimation
 #' alg <- algorithm_settings( quick_fit = T, rng_seed = 111 )
 #' # Fit model using 'brm'
 #' est <- fit_with_brm( cars, dist ~ speed, algorithm = alg )
+#' }
 #'
 #' # Example for logistic regression
-#' # Simulate data
-#' X <- cbind( 1, rep( 0:1, each = 100 ) )
-#' p <- 1 / ( 1 + exp( -( X %*% c( -1, .5 ) ) ) )
-#' df <- data.frame(
-#'   Y = rbinom( nrow( X ), 1, p ),
-#'   X = X[,2]
-#' )
-#'
-#' # Empirical Bayes prior on intercept
-#' obs <- mean( df$Y[ df$X == 0 ] )
-#' obs <- round( log( obs / (1 - obs) ) , 2 )
-#' prs <- c(
-#'   prior_string( paste0( 'normal( ', obs, ', 2.5 )' ), class = 'Intercept' ),
-#'   prior_string( 'normal( 0.0, 2.5 )', class = 'b' )
-#' )
-#'
+#' \dontrun{
+#' data( mtcars )
+#' # Standardize predictors
+#' dtf <- mtcars[,c('vs','wt','disp')]
+#' dtf$wt <- scale( dtf$wt )[,1]
+#' dtf$disp <- scale( dtf$disp )[,1]
 #' # Setting for algorithm for quicker estimation
 #' alg <- algorithm_settings( quick_fit = T, rng_seed = 112 )
+#' # Specify priors
+#' prs <- get_prior(
+#'   vs ~ wt + disp,
+#'   family = bernoulli( link = 'logit' ),
+#'   data = mtcars
+#' )
+#' # Empirical Bayes prior on intercept
+#' p <- mean( dtf$vs )
+#' lo <- log( p / ( 1 - p ) )
+#' prs$prior[ prs$class == 'Intercept' ] <-
+#'   paste0( 'normal( ', round( lo, 2 ), ', 2.5 )' )
+#' # Weakly regularizing priors on coefficients
+#' prs$prior[ prs$class == 'b' & prs$coef != '' ] <-
+#'   'normal( 0.0, 1.0 )'
 #' est <- fit_with_brm(
-#'   df, Y ~ X,
+#'   dtf, vs ~ wt + disp,
 #'   family = bernoulli( link = 'logit' ),
 #'   prior = prs,
 #'   algorithm = alg
 #' )
+#' }
 #'
 #' @export
 
@@ -961,37 +643,38 @@ fit_with_brm <- function( data, formula,
                           sample_prior = 'yes',
                           output = NULL,
                           track_time = T,
-                          predict.probs = NULL,
-                          debug_function = FALSE,
+                          predict_probs = NULL,
+                          status = FALSE,
                           ... ) {
 
-  if ( debug_function ) message( 'Start estimation' )
+  #### 5.1) Setup ####
+
+  if ( status ) message( 'Start estimation' )
 
   if ( is.null( algorithm ) ) {
-    if ( debug_function )
+    if ( status )
       message( '- Settings for estimation algorithm' )
 
     algorithm <- extbrms::algorithm_settings()
   }
 
-  if ( is.null( predict.probs ) ) {
-    if ( debug_function )
+  if ( is.null( predict_probs ) ) {
+    if ( status )
       message( '- Default prediction intervals' )
-    predict.probs <- c(
+    predict_probs <- c(
       .025, # Lower boundary - 95%
       .05, # Lower boundary - 90%
-      pnorm( -1 ), # Lower boundary - 1 SD for normal
+      round( pnorm( -1 ), 3 ), # Lower boundary - 1 SD for normal
       .25, # Lower boundary - 50%
-      .5, # Median
       .75, # Upper boundary - 50%
-      pnorm( 1 ), # Upper boundary - 1 SD for normal
+      round( pnorm( 1 ), 3 ), # Upper boundary - 1 SD for normal
       .95, # Upper boundary - 90%
       .975 # Upper boundary - 95%
     )
   }
 
   if ( is.null( output ) ) {
-    if ( debug_function )
+    if ( status )
       message( '- Initialize output' )
     output <- list(
       data = data,
@@ -999,10 +682,7 @@ fit_with_brm <- function( data, formula,
       fit = NULL,
       predicted = NULL,
       algorithm = algorithm,
-      parameters = list(
-        all = '',
-        population = ''
-      )
+      parameters = list()
     )
 
   } else {
@@ -1010,13 +690,15 @@ fit_with_brm <- function( data, formula,
     output$algorithm <- algorithm
   }
 
+  #### 5.2) Fit model ####
+
   if ( is.null( output$time ) & track_time ) {
-    if ( debug_function )
+    if ( status )
       message( '- Track estimation time' )
     output$time <- Sys.time()
   }
 
-  if ( debug_function )
+  if ( status )
     message( '- Fit model to data' )
 
   output$fit <- brm(
@@ -1036,47 +718,110 @@ fit_with_brm <- function( data, formula,
     ...
   )
 
-  if ( debug_function )
+  #### 5.3) Model predictions ####
+
+  if ( status )
     message( '- Generate model predictions' )
 
-  predicted_y <- predict( output$fit, probs = predict.probs )
+  # Simulated data for each set of posterior samples
+  output$predicted <- posterior_predict( output$fit )
 
-  if ( debug_function )
-    message( '- Format labels for predictions' )
+  n_sim <- ncol( output$predicted )
+  n_obs <- nrow( output$data )
 
-  prd_lbl <- paste0( 'Y.hat.LB.', round( predict.probs, 3 ) )
-  prd_lbl[ predict.probs > .5 ] <-
-    gsub( '.LB.', '.UB.', prd_lbl[ predict.probs > .5 ], fixed = TRUE )
-  if ( any( predict.probs == .5 ) ) {
-    prd_lbl[ predict.probs == .5 ] <- 'Y.hat.Median'
-  }
+  if ( n_sim != n_obs ) {
 
-  nms <- colnames( predicted_y )
-  entries <- grepl( 'Q', nms, fixed = TRUE )
-  nms[ entries ] <- prd_lbl
-  nms[ !entries ] <- paste0(
-    'Y.hat.',
-    nms[ !entries ]
-  )
-
-  if ( debug_function )
-    message( '- Add predictions to data' )
-
-  if ( nrow( predicted_y ) == nrow( output$data ) ) {
-    output$data <- cbind( output$data, predicted_y )
-  } else {
     wrn_msg <- paste0(
       "Number of predicted observations does not match ",
       "number of rows in data passed to 'brm' function - ",
       "check for missing data in outcomes and predictors."
     )
     warning( wrn_msg )
+
+  } else {
+
+    # Check if predictions are for categorical/ordinal data
+
+    # Predict only one row of data and use
+    # only 100 draws from posterior for speed
+    nd <- output$data[1,]
+    check <- predict( output$fit, newdata = nd, draw_ids = 1:100 )
+
+    # Categorical or ordinal data
+    if ( !all( c( 'Estimate', 'Q2.5', 'Q97.5' ) %in%
+               colnames( check ) ) ) {
+
+      if ( status )
+        message( '- Predictions for categorical or ordinal data' )
+
+      # Close 'Categorical or ordinal data'
+    } else {
+
+      if ( status )
+        message( '- Predictions for standard data' )
+
+      # Add predictions to saved data
+      output$data$Y.hat.Mean <-
+        apply( output$predicted, 2, mean )
+      output$data$Y.hat.Median <-
+        apply( output$predicted, 2, median )
+      output$data$Y.hat.SD <-
+        apply( output$predicted, 2, sd )
+
+      K <- length( predict_probs )
+      if ( K > 0 ) {
+        prd <- matrix( NA, n_obs, K )
+        for ( k in 1:K ) {
+          prd[,k] <-
+            apply( output$predicted, 2, quantile,
+                   prob = predict_probs[k] )
+        }
+      }
+
+      nms <- rep( 'Y.hat.', K )
+      i <- predict_probs < .5
+      nms[i] <- paste0( nms[i], '.LB.', predict_probs[i] )
+      i <- predict_probs >.5
+      nms[i] <- paste0( nms[i], '.UB.', predict_probs[i] )
+
+      colnames( prd ) <- nms
+      output$data <- cbind( output$data, prd )
+
+      # Close else for 'Categorical or ordinal data'
+    }
+
   }
 
-  if ( debug_function )
+  #### 5.4) Additional processing ####
+
+  if ( status )
     message( '- Extract priors for model' )
 
   output$priors <- prior_summary( output$fit )
+
+  if ( status )
+    message( '- Additional processing' )
+
+  # Create subsets of parameter names for
+  # easier extraction
+
+  all_param <- variables( output$fit )
+
+  cls <- unique( output$priors$class )
+
+  cls <- cls[ cls != '' ]
+
+  lst <- lapply( cls, function(s)
+    all_param %s% paste0( s, ' & - prior' ) )
+  names( lst ) <- cls
+
+  lst$all <- all_param
+
+  if ( any( grepl( 'prior_', all_param, fixed = TRUE ) ) ) {
+    lst$priors <- all_param %s% 'prior_'
+  }
+
+  output$parameters <- lst
 
   if ( track_time ) {
     output$time <- Sys.time() - output$time

@@ -12,8 +12,8 @@ fit_with_brm(
   sample_prior = "yes",
   output = NULL,
   track_time = T,
-  predict.probs = NULL,
-  debug_function = FALSE,
+  predict_probs = NULL,
+  status = FALSE,
   ...
 )
 }
@@ -51,11 +51,10 @@ added.}
 \item{track_time}{Logical; if \code{TRUE}, tracks the run time
 of the function.}
 
-\item{predict.probs}{A vector of probabilities, input passed
-on to the \code{probs} argument in
-\code{\link[brms]{predict.brmsfit}}.}
+\item{predict_probs}{A vector of probabilities, input passed
+on to the \code{probs} argument in \code{\link[brms]{predict.brmsfit}}.}
 
-\item{debug_function}{Logical; if \code{TRUE} prints brief
+\item{status}{Logical; if \code{TRUE} prints brief
 messages to the console to track progress for debugging
 purposes.}
 
@@ -65,10 +64,17 @@ function.}
 \value{
 A list including the elements...
 \itemize{
-\item data: The data frame used as input to the \code{brm} function.
-\item priors: The priors extracted via the \code{prior_summary} function.
-\item fit: The output from the \code{brm} function.
-\item algorithm: The list with the algorithm settings.
+\item data: The data frame used as input to the
+\code{brm} function;
+\item priors: The priors extracted via the
+\code{prior_summary} function;
+\item fit: The output from the \code{brm} function;
+\item predicted: A matrix simulated data based on
+the sets posterior samples (rows) per each observation
+in the data set (columns);
+\item algorithm: The list with the algorithm settings;
+\item parameters: A list with subsets of parameter names;
+\item time: How long it took to fit the model.
 }
 }
 \description{
@@ -85,36 +91,43 @@ more details.
 }
 \examples{
 # Example for simple linear regression
+\dontrun{
 data( cars )
 # Setting for algorithm for quicker estimation
 alg <- algorithm_settings( quick_fit = T, rng_seed = 111 )
 # Fit model using 'brm'
 est <- fit_with_brm( cars, dist ~ speed, algorithm = alg )
+}
 
 # Example for logistic regression
-# Simulate data
-X <- cbind( 1, rep( 0:1, each = 100 ) )
-p <- 1 / ( 1 + exp( -( X \%*\% c( -1, .5 ) ) ) )
-df <- data.frame(
-  Y = rbinom( nrow( X ), 1, p ),
-  X = X[,2]
-)
-
-# Empirical Bayes prior on intercept
-obs <- mean( df$Y[ df$X == 0 ] )
-obs <- round( log( obs / (1 - obs) ) , 2 )
-prs <- c(
-  prior_string( paste0( 'normal( ', obs, ', 2.5 )' ), class = 'Intercept' ),
-  prior_string( 'normal( 0.0, 2.5 )', class = 'b' )
-)
-
+\dontrun{
+data( mtcars )
+# Standardize predictors
+dtf <- mtcars[,c('vs','wt','disp')]
+dtf$wt <- scale( dtf$wt )[,1]
+dtf$disp <- scale( dtf$disp )[,1]
 # Setting for algorithm for quicker estimation
 alg <- algorithm_settings( quick_fit = T, rng_seed = 112 )
+# Specify priors
+prs <- get_prior(
+  vs ~ wt + disp,
+  family = bernoulli( link = 'logit' ),
+  data = mtcars
+)
+# Empirical Bayes prior on intercept
+p <- mean( dtf$vs )
+lo <- log( p / ( 1 - p ) )
+prs$prior[ prs$class == 'Intercept' ] <-
+  paste0( 'normal( ', round( lo, 2 ), ', 2.5 )' )
+# Weakly regularizing priors on coefficients
+prs$prior[ prs$class == 'b' & prs$coef != '' ] <-
+  'normal( 0.0, 1.0 )'
 est <- fit_with_brm(
-  df, Y ~ X,
+  dtf, vs ~ wt + disp,
   family = bernoulli( link = 'logit' ),
   prior = prs,
   algorithm = alg
 )
+}
 
 }
